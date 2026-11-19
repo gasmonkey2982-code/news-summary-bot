@@ -54,7 +54,7 @@ Summary shuru karo:
 """
 
     data = {
-        "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "model": "baidu/ernie-5.5-flash-preview:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
