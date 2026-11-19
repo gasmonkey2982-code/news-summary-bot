@@ -48,9 +48,9 @@ def clean_html(raw_html: str) -> str:
 
 
 def fetch_article_context(url: str, fallback_summary: str) -> str:
-    """Article page se sirf shuruati 1-2 paragraphs nikalta hai (fast)."""
+    """Fast context extraction (max 120 chars) taaki request light rahe."""
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=5)
+        resp = requests.get(url, headers=HEADERS, timeout=4)
         resp.raise_for_status()
         paragraphs = re.findall(
             r"<p[^>]*>(.*?)</p>",
@@ -61,49 +61,44 @@ def fetch_article_context(url: str, fallback_summary: str) -> str:
         for p in paragraphs:
             txt = clean_html(p)
             if (
-                len(txt) > 60
+                len(txt) > 50
                 and "cookie" not in txt.lower()
                 and "subscribe" not in txt.lower()
             ):
                 clean_paras.append(txt)
-            if len(" ".join(clean_paras)) > 220:
+            if len(" ".join(clean_paras)) > 120:
                 break
 
         if clean_paras:
-            return " ".join(clean_paras)[:220]
+            return " ".join(clean_paras)[:120]
     except Exception:
         pass
 
-    return (fallback_summary or "")[:200]
-
+    return (fallback_summary or "")[:120]
 
 def _generate_part(client, news_slice: str, section_template: str, count: int) -> str:
-    """Chhote batch ko fast summarize karta hai taaki 504 na aaye."""
+    """Fast timeout aur short backoff ke saath chhota batch generate karta hai."""
     prompt = f"""
-Yeh taaza khabrein hain:
+Khabrein:
 {news_slice}
 
-INSTRUCTIONS:
-1. Summary SIRF Roman script (English letters) mein likho. Hindi/Devanagari script bilkul mat use karo.
-2. Language HINGLISH honi chahiye (natural casual tone).
-3. Exact {count} crisp bullet points banao — sirf niche diye format mein (har section mein 2 bullets):
+Rules:
+1. Sirf Roman script (English letters) mein Hinglish likho. Hindi script nahi.
+2. Exact {count} short points niche diye format mein banao (har section ke neeche 2 bullets):
 
 {section_template}
 
-4. DETAILS padh kar 1.5 line mein asli baat batao.
-5. Bullet ke aage dubara category naam mat likho. Extra intro/outro mat likho.
-
-Summary:
+3. Har point 1-2 line ka ho aur andar ki main baat bataye. Category dubara mat likho. No extra text.
 """
     last_error = ""
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    max_output_tokens=700,
-                    temperature=0.4,
+                    max_output_tokens=550,
+                    temperature=0.3,
                 ),
             )
             text = (response.text or "").strip()
@@ -113,11 +108,11 @@ Summary:
         except Exception as e:
             last_error = str(e)[:150]
             print(f"Attempt {attempt + 1} error: {last_error}")
-            if attempt < 2:
-                time.sleep(5 * (attempt + 1))
+            if attempt == 0:
+                time.sleep(2)
 
     raise RuntimeError(last_error)
-
+    
 def get_news():
     """RSS feeds aur article context se crisp news pool banata hai."""
     items = []
