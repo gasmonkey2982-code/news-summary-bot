@@ -108,13 +108,15 @@ Rules:
                 return text
             last_error = "Empty response"
         except Exception as e:
-            last_error = str(e)[:150]
+            err_str = str(e)
+            last_error = err_str[:150]
             print(f"Attempt {attempt + 1} error: {last_error}")
-
-        if attempt < len(wait_times):
-            sleep_sec = wait_times[attempt]
-            print(f"{sleep_sec}s baad retry...")
-            time.sleep(sleep_sec)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                break
+            if attempt < len(wait_times):
+                sleep_sec = wait_times[attempt]
+                print(f"{sleep_sec}s baad retry...")
+                time.sleep(sleep_sec)
 
     raise RuntimeError(last_error)
     
