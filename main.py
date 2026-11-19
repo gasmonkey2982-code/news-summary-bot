@@ -47,7 +47,8 @@ def summarize_with_ai(raw_news):
     }
 
     response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
-    
+    print(f"OpenRouter Status: {response.status_code}")
+print(f"Response: {response.text[:200]}") # Pehle 200 chars print karega
     if response.status_code == 200:
         return response.json()['choices'][0]['message']['content']
     else:
