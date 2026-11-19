@@ -54,7 +54,7 @@ Summary shuru karo:
 """
 
     data = {
-        "model": "baidu/ernie-5.5-flash-preview:free",
+        "model": "nvidia/nemotron-3.5-super-vl:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
