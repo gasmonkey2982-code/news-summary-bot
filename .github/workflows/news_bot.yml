@@ -17,11 +17,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
+          
       - name: Install dependencies
         run: |
-          pip install feedparser requests google-genai
-
+          pip install feedparser requests google-generativeai
+          
       - name: Run News Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
