@@ -167,7 +167,7 @@ def summarize_with_ai(raw_news: str) -> str:
     """10 points ko 2 fast batches mein banata hai taaki 504 deadline exceed na ho."""
     client = genai.Client(
         api_key=GOOGLE_API_KEY,
-        http_options=types.HttpOptions(timeout=60000),
+        http_options=types.HttpOptions(timeout=25000),
     )
 
     blocks = raw_news.split("\n\n")
