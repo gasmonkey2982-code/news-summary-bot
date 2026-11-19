@@ -1,15 +1,13 @@
 import requests
 import feedparser
 import os
-import time
 
 # --- CONFIGURATION ---
-# Yahan apni details daalo
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
-# News Source (RSS Link) - Example: Times of India Top Stories
+# News Source (RSS Link)
 RSS_URL = "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"
 
 # --- FUNCTIONS ---
@@ -18,7 +16,6 @@ def get_news():
     """RSS feed se latest 5 news nikalta hai"""
     feed = feedparser.parse(RSS_URL)
     news_items = []
-    # Sirf pehle 5 articles le rahe hain
     for entry in feed.entries[:5]:
         title = entry.title
         link = entry.link
@@ -30,7 +27,7 @@ def summarize_with_ai(raw_news):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com", # Required by OpenRouter
+        "HTTP-Referer": "https://github.com",
     }
     
     prompt = f"""
@@ -42,17 +39,29 @@ def summarize_with_ai(raw_news):
     """
 
     data = {
-        "model": "meta-llama/llama-3.2-3b-instruct:free", # Yeh model FREE hai
+        "model": "meta-llama/llama-3.2-3b-instruct:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
-    response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
-    print(f"OpenRouter Status: {response.status_code}")
-print(f"Response: {response.text[:200]}") # Pehle 200 chars print karega
-    if response.status_code == 200:
-        return response.json()['choices'][0]['message']['content']
-    else:
-        return "AI Error: Summary generate nahi ho payi."
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions", 
+            json=data, 
+            headers=headers,
+            timeout=30
+        )
+        
+        print(f"OpenRouter Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content']
+        else:
+            print(f"Error Response: {response.text[:300]}")
+            return f"AI Error: Status {response.status_code}"
+            
+    except Exception as e:
+        print(f"Request Failed: {str(e)}")
+        return "AI Error: Connection failed"
 
 def send_to_telegram(message):
     """Telegram par message bhejta hai"""
