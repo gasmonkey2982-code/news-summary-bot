@@ -54,7 +54,7 @@ Summary shuru karo:
 """
 
     data = {
-        "model": "google/gemma-4-26b-a4b-it:free",
+        "model": "recraft/recraft-v4.1-flash-v2:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
