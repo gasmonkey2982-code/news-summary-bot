@@ -34,12 +34,13 @@ def summarize_with_ai(raw_news):
 Yeh taaza khabrein hain:
 {raw_news}
 
-IMPORTANT: Is summary ko SIRF ROMAN SCRIPT (English letters) mein likho. 
-Bilkul bhi Devanagari/Hindi script mat use karo.
-Example: "PUC certificate check karo" NOT "पीयूसी सर्टिफिकेट चेक करो"
+IMPORTANT INSTRUCTIONS:
+1. Summary SIRF ROMAN SCRIPT (English letters) mein likho. Devanagari/Hindi font bilkul mat use karo.
+2. Language HINGLISH honi chahiye (Hindi words English letters mein). 
+   Example: "PUC certificate check kar lo" ✅ | "Check your PUC certificate" ❌
+3. 5 chhote bullet points banao. Tone casual rakho.
 
-Inhe padh kar Hinglish mein 5 chhote bullet points mein summary bana do. 
-Tone casual rakho. Sirf summary do, kuch extra mat likho.
+Summary shuru karo:
 """
 
     data = {
