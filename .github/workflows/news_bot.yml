@@ -3,24 +3,25 @@ name: Daily News Summary
 on:
   schedule:
     # Roz subah 8:00 AM IST (2:30 AM UTC)
-    - cron: '30 2 * * *' 
-  workflow_dispatch: # Manual run ke liye button
+    - cron: '30 2 * * *'
+  workflow_dispatch: {} # Manual run ke liye button
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          
+
       - name: Install dependencies
         run: |
-          pip install google-genai
+          python -m pip install --upgrade pip
+          pip install feedparser requests google-genai
 
       - name: Run News Bot
         env:
