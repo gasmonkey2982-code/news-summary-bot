@@ -48,7 +48,7 @@ def clean_html(raw_html: str) -> str:
 
 
 def fetch_article_context(url: str, fallback_summary: str) -> str:
-    """Article page se shuruati paragraphs nikalta hai (fast & crisp)."""
+    """Article page se sirf shuruati 1-2 paragraphs nikalta hai (fast)."""
     try:
         resp = requests.get(url, headers=HEADERS, timeout=5)
         resp.raise_for_status()
@@ -66,16 +66,57 @@ def fetch_article_context(url: str, fallback_summary: str) -> str:
                 and "subscribe" not in txt.lower()
             ):
                 clean_paras.append(txt)
-            if len(" ".join(clean_paras)) > 350:
+            if len(" ".join(clean_paras)) > 220:
                 break
 
         if clean_paras:
-            return " ".join(clean_paras)[:350]
+            return " ".join(clean_paras)[:220]
     except Exception:
         pass
 
-    return (fallback_summary or "")[:300]
+    return (fallback_summary or "")[:200]
 
+
+def _generate_part(client, news_slice: str, section_template: str, count: int) -> str:
+    """Chhote batch ko fast summarize karta hai taaki 504 na aaye."""
+    prompt = f"""
+Yeh taaza khabrein hain:
+{news_slice}
+
+INSTRUCTIONS:
+1. Summary SIRF Roman script (English letters) mein likho. Hindi/Devanagari script bilkul mat use karo.
+2. Language HINGLISH honi chahiye (natural casual tone).
+3. Exact {count} crisp bullet points banao — sirf niche diye format mein (har section mein 2 bullets):
+
+{section_template}
+
+4. DETAILS padh kar 1.5 line mein asli baat batao.
+5. Bullet ke aage dubara category naam mat likho. Extra intro/outro mat likho.
+
+Summary:
+"""
+    last_error = ""
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=700,
+                    temperature=0.4,
+                ),
+            )
+            text = (response.text or "").strip()
+            if text:
+                return text
+            last_error = "Empty response"
+        except Exception as e:
+            last_error = str(e)[:150]
+            print(f"Attempt {attempt + 1} error: {last_error}")
+            if attempt < 2:
+                time.sleep(5 * (attempt + 1))
+
+    raise RuntimeError(last_error)
 
 def get_news():
     """RSS feeds aur article context se crisp news pool banata hai."""
@@ -128,18 +169,21 @@ def get_news():
 
 
 def summarize_with_ai(raw_news: str) -> str:
-    """Gemini se backoff retry ke saath 10 grouped Hinglish points banata hai."""
-    prompt = f"""
-Yeh aaj ki taaza khabrein hain unki andar ki details ke saath:
-{raw_news}
+    """10 points ko 2 fast batches mein banata hai taaki 504 deadline exceed na ho."""
+    client = genai.Client(
+        api_key=GOOGLE_API_KEY,
+        http_options=types.HttpOptions(timeout=60000),
+    )
 
-INSTRUCTIONS:
-1. Summary SIRF Roman script (English letters) mein likho. Devanagari/Hindi script bilkul mat use karo.
-2. Language HINGLISH honi chahiye (Hindi words English letters mein, natural aur casual tone).
-   Example: "PUC certificate check kar lo" ✅ | "Check your PUC certificate" ❌
-3. Total 10 informative bullet points banao — niche diye gaye 5 sections mein group karke (har section ke neeche 2 bullets):
+    blocks = raw_news.split("\n\n")
+    part1_news = "\n\n".join(
+        b for b in blocks if b.startswith(("[National]", "[International]", "[Tech]"))
+    )
+    part2_news = "\n\n".join(
+        b for b in blocks if b.startswith(("[Business]", "[Sports]"))
+    )
 
-🇮🇳 National
+    part1_template = """🇮🇳 National
 • ...
 • ...
 
@@ -149,50 +193,22 @@ INSTRUCTIONS:
 
 💻 Tech
 • ...
-• ...
+• ..."""
 
-📈 Business
+    part2_template = """📈 Business
 • ...
 • ...
 
 🏏 Sports
 • ...
-• ...
+• ..."""
 
-4. Sirf headline repeat mat karo — DETAILS padh kar 1.5 se 2 lines mein batao ki asli baat kya hai (jaise kyun hua, kitna figure/impact hai, ya main point kya hai).
-5. Har bullet ke aage dubara category ka naam mat likho (category sirf section heading mein ek baar aayegi).
-6. Duplicate khabrein mat likho aur extra intro/outro text mat do.
-
-Summary:
-"""
-    client = genai.Client(
-        api_key=GOOGLE_API_KEY,
-        http_options=types.HttpOptions(timeout=90000),
-    )
-
-    wait_times = [5, 15, 30]  # 4 attempts total with increasing backoff
-    last_error = ""
-
-    for attempt in range(len(wait_times) + 1):
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt,
-            )
-            text = (response.text or "").strip()
-            if text:
-                return text
-            last_error = "Empty response from Gemini"
-        except Exception as e:
-            last_error = str(e)[:200]
-            print(f"Gemini Attempt {attempt + 1} Error: {last_error}")
-
-        if attempt < len(wait_times):
-            sleep_sec = wait_times[attempt]
-            print(f"{sleep_sec}s baad dobara try kar raha hu...")
-            time.sleep(sleep_sec)
-
-    return f"AI Error: {last_error}"
+    try:
+        res1 = _generate_part(client, part1_news, part1_template, 6)
+        res2 = _generate_part(client, part2_news, part2_template, 4)
+        return f"{res1}\n\n{res2}"
+    except Exception as e:
+        return f"AI Error: {str(e)}"
 
 
 def send_to_telegram(message: str):
