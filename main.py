@@ -1,7 +1,10 @@
+import html
 import os
+import re
 import feedparser
 import requests
 from google import genai
+from google.genai import types
 
 # --- CONFIGURATION ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -9,11 +12,12 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 RSS_URLS = [
-    ("Tech", "https://indianexpress.com/section/technology/feed/"),
-    ("Sports", "https://indianexpress.com/section/sports/feed/"),
-    ("India", "https://indianexpress.com/section/india/feed/"),
     ("National", "https://www.thehindu.com/news/national/feeder/default.rss"),
-    ("Top", "https://feeds.feedburner.com/ndtvnews-top-stories"),
+    ("National", "https://indianexpress.com/section/india/feed/"),
+    ("International", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("Tech", "https://inc42.com/feed/"),
+    ("Business", "https://www.livemint.com/rss/news"),
+    ("Sports", "https://www.espncricinfo.com/rss/content/story/feeds/0.xml"),
 ]
 
 HEADERS = {
@@ -22,6 +26,7 @@ HEADERS = {
 
 
 def validate_config():
+    """Verify karta hai ki zaroori environment variables set hain ya nahi."""
     missing = [
         name for name, val in [
             ("TELEGRAM_BOT_TOKEN", TELEGRAM_BOT_TOKEN),
@@ -34,9 +39,47 @@ def validate_config():
         raise ValueError(f"Missing environment variables: {', '.join(missing)}")
 
 
+def clean_html(raw_html: str) -> str:
+    """HTML tags aur entities (&amp;, &#39;, etc.) saaf karta hai."""
+    text = re.sub(r"<.*?>", " ", raw_html or "")
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def fetch_article_context(url: str, fallback_summary: str) -> str:
+    """Article page se shuruati paragraphs nikalta hai taaki Gemini ko andar ki detail mile."""
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=6)
+        resp.raise_for_status()
+        paragraphs = re.findall(
+            r"<p[^>]*>(.*?)</p>",
+            resp.text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        clean_paras = []
+        for p in paragraphs:
+            txt = clean_html(p)
+            if (
+                len(txt) > 60
+                and "cookie" not in txt.lower()
+                and "subscribe" not in txt.lower()
+            ):
+                clean_paras.append(txt)
+            if len(" ".join(clean_paras)) > 600:
+                break
+
+        if clean_paras:
+            return " ".join(clean_paras)[:650]
+    except Exception:
+        pass
+
+    return (fallback_summary or "")[:500]
+
+
 def get_news():
-    """Multiple RSS feeds se mixed headlines nikalta hai."""
-    headlines = []
+    """RSS feeds aur article context se mixed news pool banata hai."""
+    items = []
+    seen_titles = set()
     success_count = 0
 
     for category, url in RSS_URLS:
@@ -47,37 +90,85 @@ def get_news():
 
             if feed.entries:
                 for entry in feed.entries[:3]:
-                    title = (entry.get("title") or "").strip()
-                    if title:
-                        headlines.append(f"[{category}] {title}")
+                    title = clean_html(entry.get("title", ""))
+                    if not title or title.lower() in seen_titles:
+                        continue
+                    seen_titles.add(title.lower())
+
+                    rss_content = ""
+                    if entry.get("content"):
+                        rss_content = clean_html(entry.content[0].get("value", ""))
+                    if not rss_content:
+                        rss_content = clean_html(entry.get("summary", ""))
+
+                    link = entry.get("link", "")
+                    details = (
+                        fetch_article_context(link, rss_content)
+                        if link
+                        else rss_content[:500]
+                    )
+
+                    if details:
+                        items.append(
+                            f"[{category}] HEADLINE: {title}\nDETAILS: {details}"
+                        )
+                    else:
+                        items.append(f"[{category}] HEADLINE: {title}")
+
                 success_count += 1
                 print(f"Success ({category}): {url}")
             else:
                 print(f"Empty feed ({category}): {url}")
         except Exception as e:
-            print(f"Failed to parse {url}: {str(e)}")
+            print(f"Failed ({category}) {url}: {str(e)}")
 
     print(f"Total feeds successful: {success_count}")
-    return "\n".join(headlines) if headlines else None
+    return "\n\n".join(items) if items else None
 
 
 def summarize_with_ai(raw_news: str) -> str:
-    """Gemini se Hinglish summary banata hai."""
+    """Gemini se andar ke context ke saath 10 grouped Hinglish points banata hai."""
     prompt = f"""
-Yeh aaj ki taaza headlines hain:
+Yeh aaj ki taaza khabrein hain unki andar ki details ke saath:
 {raw_news}
 
 INSTRUCTIONS:
-1. Summary SIRF Roman script (English letters) mein likho. Devanagari/Hindi script bilkul use mat karo.
+1. Summary SIRF Roman script (English letters) mein likho. Devanagari/Hindi script bilkul mat use karo.
 2. Language HINGLISH honi chahiye (Hindi words English letters mein, natural aur casual tone).
    Example: "PUC certificate check kar lo" ✅ | "Check your PUC certificate" ❌
-3. Exact 5 short bullet points mein summary do (har bullet ke aage "• " lagao).
-4. Extra intro ya outro text mat likho.
+3. Total 10 informative bullet points banao — niche diye gaye 5 sections mein group karke (har section ke neeche 2 bullets):
+
+🇮🇳 National
+• ...
+• ...
+
+🌍 International
+• ...
+• ...
+
+💻 Tech
+• ...
+• ...
+
+📈 Business
+• ...
+• ...
+
+🏏 Sports
+• ...
+• ...
+
+4. Sirf headline repeat mat karo — DETAILS padh kar 1.5 se 2 lines mein batao ki asli baat kya hai (jaise kyun hua, kitna figure/impact hai, ya main point kya hai).
+5. Har bullet ke aage dubara category ka naam mat likho (category sirf section heading mein ek baar aayegi).
+6. Duplicate khabrein mat likho aur extra intro/outro text mat do.
 
 Summary:
 """
     try:
-        client = genai.Client(api_key=GOOGLE_API_KEY)
+        client = genai.Client(
+            api_key=GOOGLE_API_KEY,
+            http_options=types.HttpOptions(timeout=30000),
+        )
         response = client.models.generate_content(
             model="gemini-3.8-flash",
             contents=prompt,
@@ -122,7 +213,7 @@ if __name__ == "__main__":
     print("Gemini se summary bana raha hu...")
     summary = summarize_with_ai(raw_news)
 
-    final_message = f"📰 Aaj Ki Taaza Khabrein\n\n{summary}"
+    final_message = f"📰 Aaj Ki 10 Taaza Khabrein\n\n{summary}"
 
     print("Telegram par bhej raha hu...")
     send_to_telegram(final_message)
