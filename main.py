@@ -1,30 +1,26 @@
-import requests
 import feedparser
 import os
+from google import genai
 
 # --- CONFIGURATION ---
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
-# News Source (RSS Link)
-RSS_URL = "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"
+client = genai.Client(api_key=GOOGLE_API_KEY)
 
-# --- FUNCTIONS ---
+# News Sources
+RSS_URLS = [
+    "https://indianexpress.com/section/technology/feed/",
+    "https://indianexpress.com/section/sports/feed/",
+    "https://indianexpress.com/section/india/feed/"
+]
 
 def get_news():
     """Multiple RSS feeds se mixed news nikalta hai"""
-    rss_urls = [
-        "https://indianexpress.com/section/technology/feed/",
-        "https://indianexpress.com/section/sports/feed/",
-        "https://indianexpress.com/section/india/feed/"
-    ]
-    
     all_news = []
-    
-    for url in rss_urls:
+    for url in RSS_URLS:
         feed = feedparser.parse(url)
-        # Har category se top 3 articles le rahe hain (Total 9 max)
         for entry in feed.entries[:3]:
             title = entry.title
             link = entry.link
@@ -33,50 +29,31 @@ def get_news():
     return "\n\n".join(all_news)
 
 def summarize_with_ai(raw_news):
-    """OpenRouter se free model use karke summary banata hai"""
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com",
-    }
+    """Gemini se free model use karke summary banata hai"""
     
     prompt = f"""
-Yeh taaza khabrein hain:
-{raw_news}
+    Yeh taaza khabrein hain:
+    {raw_news}
 
-IMPORTANT INSTRUCTIONS:
-1. Summary SIRF ROMAN SCRIPT (English letters) mein likho. Devanagari/Hindi font bilkul mat use karo.
-2. Language HINGLISH honi chahiye (Hindi words English letters mein). 
-   Example: "PUC certificate check kar lo" ✅ | "Check your PUC certificate" ❌
-3. 5 chhote bullet points banao. Tone casual rakho.
+    IMPORTANT INSTRUCTIONS:
+    1. Summary SIRF ROMAN SCRIPT (English letters) mein likho. Devanagari/Hindi font bilkul mat use karo.
+    2. Language HINGLISH honi chahiye (Hindi words English letters mein). 
+       Example: "PUC certificate check kar lo" ✅ | "Check your PUC certificate" ❌
+    3. 5 chhote bullet points banao. Tone casual rakho.
 
-Summary shuru karo:
-"""
-
-    data = {
-        "model": "inclusionai/ling-3.2-flash:free",
-        "messages": [{"role": "user", "content": prompt}]
-    }
+    Summary shuru karo:
+    """
 
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions", 
-            json=data, 
-            headers=headers,
-            timeout=30
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
         )
+        return response.text
         
-        print(f"OpenRouter Status Code: {response.status_code}")
-        
-        if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content']
-        else:
-            print(f"Error Response: {response.text[:300]}")
-            return f"AI Error: Status {response.status_code}"
-            
     except Exception as e:
-        print(f"Request Failed: {str(e)}")
-        return "AI Error: Connection failed"
+        print(f"Gemini Error: {str(e)}")
+        return "AI Error: Summary generate nahi ho payi."
 
 def send_to_telegram(message):
     """Telegram par message bhejta hai"""
@@ -86,6 +63,7 @@ def send_to_telegram(message):
         "text": message,
         "parse_mode": "Markdown"
     }
+    import requests
     requests.post(url, json=payload)
 
 # --- MAIN EXECUTION ---
@@ -93,7 +71,7 @@ if __name__ == "__main__":
     print("News fetch kar raha hu...")
     raw_news = get_news()
     
-    print("AI se summary bana raha hu...")
+    print("Gemini se summary bana raha hu...")
     summary = summarize_with_ai(raw_news)
     
     final_message = f"📰 *Aaj Ki Taaza Khabrein*\n\n{summary}"
