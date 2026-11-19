@@ -1,6 +1,7 @@
 import html
 import os
 import re
+import time
 import feedparser
 import requests
 from google import genai
@@ -47,9 +48,9 @@ def clean_html(raw_html: str) -> str:
 
 
 def fetch_article_context(url: str, fallback_summary: str) -> str:
-    """Article page se shuruati paragraphs nikalta hai taaki Gemini ko andar ki detail mile."""
+    """Article page se shuruati paragraphs nikalta hai (fast & crisp)."""
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=6)
+        resp = requests.get(url, headers=HEADERS, timeout=5)
         resp.raise_for_status()
         paragraphs = re.findall(
             r"<p[^>]*>(.*?)</p>",
@@ -65,19 +66,19 @@ def fetch_article_context(url: str, fallback_summary: str) -> str:
                 and "subscribe" not in txt.lower()
             ):
                 clean_paras.append(txt)
-            if len(" ".join(clean_paras)) > 600:
+            if len(" ".join(clean_paras)) > 350:
                 break
 
         if clean_paras:
-            return " ".join(clean_paras)[:650]
+            return " ".join(clean_paras)[:350]
     except Exception:
         pass
 
-    return (fallback_summary or "")[:500]
+    return (fallback_summary or "")[:300]
 
 
 def get_news():
-    """RSS feeds aur article context se mixed news pool banata hai."""
+    """RSS feeds aur article context se crisp news pool banata hai."""
     items = []
     seen_titles = set()
     success_count = 0
@@ -89,7 +90,7 @@ def get_news():
             feed = feedparser.parse(resp.text)
 
             if feed.entries:
-                for entry in feed.entries[:3]:
+                for entry in feed.entries[:2]:
                     title = clean_html(entry.get("title", ""))
                     if not title or title.lower() in seen_titles:
                         continue
@@ -105,7 +106,7 @@ def get_news():
                     details = (
                         fetch_article_context(link, rss_content)
                         if link
-                        else rss_content[:500]
+                        else rss_content[:300]
                     )
 
                     if details:
@@ -127,7 +128,7 @@ def get_news():
 
 
 def summarize_with_ai(raw_news: str) -> str:
-    """Gemini se andar ke context ke saath 10 grouped Hinglish points banata hai."""
+    """Gemini se 90s timeout + retry ke saath 10 grouped Hinglish points banata hai."""
     prompt = f"""
 Yeh aaj ki taaza khabrein hain unki andar ki details ke saath:
 {raw_news}
@@ -164,23 +165,29 @@ INSTRUCTIONS:
 
 Summary:
 """
-    try:
-        client = genai.Client(
-            api_key=GOOGLE_API_KEY,
-            http_options=types.HttpOptions(timeout=30000),
-        )
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-        )
-        text = (response.text or "").strip()
-        if not text:
-            return "AI Error: Empty response from Gemini"
-        return text
-    except Exception as e:
-        error_msg = str(e)[:200]
-        print(f"Gemini Error: {error_msg}")
-        return f"AI Error: {error_msg}"
+    client = genai.Client(
+        api_key=GOOGLE_API_KEY,
+        http_options=types.HttpOptions(timeout=90000),  # 90 seconds
+    )
+
+    last_error = ""
+    for attempt in range(2):  # 1 initial try + 1 retry if 504/503
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+            text = (response.text or "").strip()
+            if text:
+                return text
+            last_error = "Empty response from Gemini"
+        except Exception as e:
+            last_error = str(e)[:200]
+            print(f"Gemini Attempt {attempt + 1} Error: {last_error}")
+            if attempt == 0:
+                time.sleep(5)
+
+    return f"AI Error: {last_error}"
 
 
 def send_to_telegram(message: str):
