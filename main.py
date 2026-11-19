@@ -54,7 +54,7 @@ Summary shuru karo:
 """
 
     data = {
-        "model": "nvidia/nemotron-3.5-super-vl:free",
+        "model": "google/gemma-4-26b-a4b-it:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
