@@ -128,7 +128,7 @@ def get_news():
 
 
 def summarize_with_ai(raw_news: str) -> str:
-    """Gemini se 90s timeout + retry ke saath 10 grouped Hinglish points banata hai."""
+    """Gemini se backoff retry ke saath 10 grouped Hinglish points banata hai."""
     prompt = f"""
 Yeh aaj ki taaza khabrein hain unki andar ki details ke saath:
 {raw_news}
@@ -167,11 +167,13 @@ Summary:
 """
     client = genai.Client(
         api_key=GOOGLE_API_KEY,
-        http_options=types.HttpOptions(timeout=90000),  # 90 seconds
+        http_options=types.HttpOptions(timeout=90000),
     )
 
+    wait_times = [5, 15, 30]  # 4 attempts total with increasing backoff
     last_error = ""
-    for attempt in range(2):  # 1 initial try + 1 retry if 504/503
+
+    for attempt in range(len(wait_times) + 1):
         try:
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
@@ -184,8 +186,11 @@ Summary:
         except Exception as e:
             last_error = str(e)[:200]
             print(f"Gemini Attempt {attempt + 1} Error: {last_error}")
-            if attempt == 0:
-                time.sleep(5)
+
+        if attempt < len(wait_times):
+            sleep_sec = wait_times[attempt]
+            print(f"{sleep_sec}s baad dobara try kar raha hu...")
+            time.sleep(sleep_sec)
 
     return f"AI Error: {last_error}"
 
