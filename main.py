@@ -15,25 +15,38 @@ genai.configure(api_key=GOOGLE_API_KEY)
 RSS_URLS = [
     "https://indianexpress.com/section/technology/feed/",
     "https://indianexpress.com/section/sports/feed/",
-    "https://indianexpress.com/section/india/feed/"
+    "https://indianexpress.com/section/india/feed/",
+    # Fallback feeds agar IE fail ho jaye
+    "https://www.thehindu.com/news/national/feeder/default.rss",
+    "https://feeds.feedburner.com/ndtvnews-top-stories"
 ]
 
 def get_news():
     """Multiple RSS feeds se mixed news nikalta hai"""
     all_news = []
+    success_count = 0
+    
     for url in RSS_URLS:
         try:
             feed = feedparser.parse(url)
-            # Har category se top 3 articles
-            for entry in feed.entries[:3]:
-                title = entry.title
-                link = entry.link
-                all_news.append(f"• {title}\n  {link}")
+            if feed.entries:
+                for entry in feed.entries[:3]:
+                    title = entry.title
+                    link = entry.link
+                    all_news.append(f"• {title}\n  {link}")
+                success_count += 1
+                print(f"Success: {url}")
+            else:
+                print(f"Empty feed: {url}")
         except Exception as e:
-            print(f"RSS Error for {url}: {str(e)}")
+            print(f"Failed to parse {url}: {str(e)}")
+            
+    print(f"Total feeds successful: {success_count}")
+    
+    if not all_news:
+        return None  # None return karo taaki main function handle kar sake
             
     return "\n\n".join(all_news)
-
 def summarize_with_ai(raw_news):
     """Gemini se Hinglish summary banata hai"""
     
