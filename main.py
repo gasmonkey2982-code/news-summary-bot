@@ -1,13 +1,15 @@
 import feedparser
 import os
-from google import genai
+import requests
+import google.generativeai as genai
 
 # --- CONFIGURATION ---
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
-client = genai.Client(api_key=GOOGLE_API_KEY)
+# Initialize Gemini
+genai.configure(api_key=GOOGLE_API_KEY)
 
 # News Sources
 RSS_URLS = [
@@ -20,16 +22,20 @@ def get_news():
     """Multiple RSS feeds se mixed news nikalta hai"""
     all_news = []
     for url in RSS_URLS:
-        feed = feedparser.parse(url)
-        for entry in feed.entries[:3]:
-            title = entry.title
-            link = entry.link
-            all_news.append(f"• {title}\n  {link}")
+        try:
+            feed = feedparser.parse(url)
+            # Har category se top 3 articles
+            for entry in feed.entries[:3]:
+                title = entry.title
+                link = entry.link
+                all_news.append(f"• {title}\n  {link}")
+        except Exception as e:
+            print(f"RSS Error for {url}: {str(e)}")
             
     return "\n\n".join(all_news)
 
 def summarize_with_ai(raw_news):
-    """Gemini se free model use karke summary banata hai"""
+    """Gemini se Hinglish summary banata hai"""
     
     prompt = f"""
     Yeh taaza khabrein hain:
@@ -45,15 +51,18 @@ def summarize_with_ai(raw_news):
     """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(prompt)
+        
+        if not response.text:
+            return "AI Error: Empty response from Gemini"
+            
         return response.text
         
     except Exception as e:
-        print(f"Gemini Error: {str(e)}")
-        return "AI Error: Summary generate nahi ho payi."
+        error_msg = str(e)[:150]  # First 150 chars of error
+        print(f"Gemini Error: {error_msg}")
+        return f"AI Error: {error_msg}"
 
 def send_to_telegram(message):
     """Telegram par message bhejta hai"""
@@ -63,13 +72,21 @@ def send_to_telegram(message):
         "text": message,
         "parse_mode": "Markdown"
     }
-    import requests
-    requests.post(url, json=payload)
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code != 200:
+            print(f"Telegram Error: {resp.text}")
+    except Exception as e:
+        print(f"Telegram Request Failed: {str(e)}")
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
     print("News fetch kar raha hu...")
     raw_news = get_news()
+    
+    if not raw_news:
+        print("Koi news nahi mili!")
+        exit(1)
     
     print("Gemini se summary bana raha hu...")
     summary = summarize_with_ai(raw_news)
