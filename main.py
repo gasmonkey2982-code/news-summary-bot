@@ -39,7 +39,7 @@ def summarize_with_ai(raw_news):
     """
 
     data = {
-        "model": "google/gemma-2-9b-it:free",
+        "model": "google/gemma-4-31b-it:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
