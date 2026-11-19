@@ -13,14 +13,24 @@ RSS_URL = "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"
 # --- FUNCTIONS ---
 
 def get_news():
-    """RSS feed se latest 5 news nikalta hai"""
-    feed = feedparser.parse(RSS_URL)
-    news_items = []
-    for entry in feed.entries[:5]:
-        title = entry.title
-        link = entry.link
-        news_items.append(f"• {title}\n  {link}")
-    return "\n\n".join(news_items)
+    """Multiple RSS feeds se mixed news nikalta hai"""
+    rss_urls = [
+        "https://indianexpress.com/section/technology/feed/",
+        "https://indianexpress.com/section/sports/feed/",
+        "https://indianexpress.com/section/india/feed/"
+    ]
+    
+    all_news = []
+    
+    for url in rss_urls:
+        feed = feedparser.parse(url)
+        # Har category se top 3 articles le rahe hain (Total 9 max)
+        for entry in feed.entries[:3]:
+            title = entry.title
+            link = entry.link
+            all_news.append(f"• {title}\n  {link}")
+            
+    return "\n\n".join(all_news)
 
 def summarize_with_ai(raw_news):
     """OpenRouter se free model use karke summary banata hai"""
