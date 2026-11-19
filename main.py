@@ -54,7 +54,7 @@ Summary shuru karo:
 """
 
     data = {
-        "model": "recraft/recraft-v4.1-flash-v2:free",
+        "model": "inclusionai/ling-3.2-flash:free",
         "messages": [{"role": "user", "content": prompt}]
     }
 
