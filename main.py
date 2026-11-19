@@ -77,7 +77,7 @@ def fetch_article_context(url: str, fallback_summary: str) -> str:
     return (fallback_summary or "")[:120]
 
 def _generate_part(client, news_slice: str, section_template: str, count: int) -> str:
-    """Fast timeout aur short backoff ke saath chhota batch generate karta hai."""
+    """503/504 demand spikes handle karne ke liye 3 attempts aur backoff ke saath chalata hai."""
     prompt = f"""
 Khabrein:
 {news_slice}
@@ -90,8 +90,10 @@ Rules:
 
 3. Har point 1-2 line ka ho aur andar ki main baat bataye. Category dubara mat likho. No extra text.
 """
+    wait_times = [3, 7]
     last_error = ""
-    for attempt in range(2):
+
+    for attempt in range(len(wait_times) + 1):
         try:
             response = client.models.generate_content(
                 model="gemini-3.8-flash",
@@ -108,8 +110,11 @@ Rules:
         except Exception as e:
             last_error = str(e)[:150]
             print(f"Attempt {attempt + 1} error: {last_error}")
-            if attempt == 0:
-                time.sleep(2)
+
+        if attempt < len(wait_times):
+            sleep_sec = wait_times[attempt]
+            print(f"{sleep_sec}s baad retry...")
+            time.sleep(sleep_sec)
 
     raise RuntimeError(last_error)
     
