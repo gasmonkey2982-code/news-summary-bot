@@ -31,12 +31,16 @@ def summarize_with_ai(raw_news):
     }
     
     prompt = f"""
-    Yeh taaza khabrein hain:
-    {raw_news}
-    
-    Inhe padh kar Hinglish mein 5 chhote bullet points mein summary bana do. 
-    Tone casual rakho. Sirf summary do, kuch extra mat likho.
-    """
+Yeh taaza khabrein hain:
+{raw_news}
+
+IMPORTANT: Is summary ko SIRF ROMAN SCRIPT (English letters) mein likho. 
+Bilkul bhi Devanagari/Hindi script mat use karo.
+Example: "PUC certificate check karo" NOT "पीयूसी सर्टिफिकेट चेक करो"
+
+Inhe padh kar Hinglish mein 5 chhote bullet points mein summary bana do. 
+Tone casual rakho. Sirf summary do, kuch extra mat likho.
+"""
 
     data = {
         "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
